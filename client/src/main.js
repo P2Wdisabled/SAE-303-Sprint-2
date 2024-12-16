@@ -2,6 +2,9 @@ import { HeaderView } from "./ui/header/index.js";
 import { Candidats } from "./data/data-candidats.js";
 import { Lycees } from "./data/data-lycees.js";
 import './index.css';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css'; // Importer le CSS de Leaflet
+
 
 
 let C = {};
@@ -10,14 +13,18 @@ C.init = async function(){
     V.init();
     console.log(Candidats.getAll());
     console.log(Lycees.getAll());
-    var mymap = L.map('mapid').setView([47, 2], 6); 
-// Les coordonnées [47,2] sont en gros le centre de la France, et le zoom à 6 permet de voir tout le pays.
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-}).addTo(mymap);
-var marker = L.marker([48.8566, 2.3522]).addTo(mymap); // Marker sur Paris
-marker.bindPopup("Hello from Paris!").openPopup();
+    
+  // Crée la carte et la centre sur Limoges
+  const map = L.map('map').setView([45.8336, 1.2611], 13); // Zoom niveau 13
 
+  // Ajoute la couche de tuiles OpenStreetMap
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
+
+  // (Optionnel) Ajoute un marqueur sur Limoges
+  const marker = L.marker([45.8336, 1.2611]).addTo(map);
+  marker.bindPopup("<b>Limoges</b><br>Bienvenue à Limoges !").openPopup();
 }
 
 let V = {
