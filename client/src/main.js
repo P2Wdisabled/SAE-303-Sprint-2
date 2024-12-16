@@ -31,7 +31,7 @@ C.init = async function(){
     const candidaturesParLycee = {};
     candidaturesData.forEach(candidature => {
         const uai = getLatestUai(candidature);
-        if (uai) {
+        if (uai && uai != null) {
             if (candidaturesParLycee[uai]) {
                 candidaturesParLycee[uai]++;
             } else {

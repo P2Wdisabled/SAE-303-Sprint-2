@@ -8,12 +8,10 @@ import 'leaflet.markercluster';
 
 //import './map.css'; // Si vous avez des styles spécifiques pour la carte
 
-const Map = {
-};
+const Map = {};
 
-
-Map.map = null,
-Map.markers = null,
+Map.map = null;
+Map.markers = null;
 
 Map.init = async function(containerId, lycees, candidatures, filtres = {}) {
     // Initialiser la carte
@@ -28,6 +26,18 @@ Map.init = async function(containerId, lycees, candidatures, filtres = {}) {
     const markerTest = L.marker([45.8336, 1.2611]).addTo(this.map);
     markerTest.bindPopup("<b>Limoges</b><br>Bienvenue à Limoges !").openPopup();
 
+    // Initialiser le groupe de clusters avec `zoomToBoundsOnClick` désactivé
+    this.markers = L.markerClusterGroup({
+        zoomToBoundsOnClick: false, // Désactiver le zoom automatique sur le clic du cluster
+        // Vous pouvez ajouter d'autres options ici si nécessaire
+    });
+
+    // Ajouter l'écouteur d'événements pour les clusters
+    this.markers.on('clusterclick', this.onClusterClick.bind(this));
+
+    // Ajouter le groupe de clusters à la carte
+    this.map.addLayer(this.markers);
+
     // Ajouter les marqueurs des lycées avec les candidatures
     this.ajouterMarqueursLycees(lycees, candidatures, filtres);
 
@@ -39,7 +49,7 @@ Map.init = async function(containerId, lycees, candidatures, filtres = {}) {
 
     // Ajouter des écouteurs d'événements pour les filtres
     this.ajouterEcouteursFiltres(lycees, candidatures);
-},
+};
 
 Map.getLatestUai = async function(candidature) {
     for (let i = 0; i < candidature.Scolarite.length; i++) {
@@ -49,13 +59,13 @@ Map.getLatestUai = async function(candidature) {
         }
     }
     return null;
-},
+};
 
 Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) {
+    // Effacer les anciens marqueurs
     if (this.markers) {
-        this.map.removeLayer(this.markers);
+        this.markers.clearLayers();
     }
-    this.markers = L.markerClusterGroup();
 
     lycees.forEach(lycee => {
         const lat = parseFloat(lycee.latitude);
@@ -66,9 +76,9 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
         // Appliquer les filtres
         if (
             (nombreCandidatures === 0 && !filtres.filtre0) ||
-            (nombreCandidatures >=1 && nombreCandidatures <=2 && !filtres.filtre1_2) ||
-            (nombreCandidatures >=3 && nombreCandidatures <=5 && !filtres.filtre3_5) ||
-            (nombreCandidatures >=6 && !filtres.filtre6)
+            (nombreCandidatures >= 1 && nombreCandidatures <= 2 && !filtres.filtre1_2) ||
+            (nombreCandidatures >= 3 && nombreCandidatures <= 5 && !filtres.filtre3_5) ||
+            (nombreCandidatures >= 6 && !filtres.filtre6)
         ) {
             return; // Ne pas ajouter ce marqueur
         }
@@ -96,6 +106,9 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
                 fillOpacity: 0.8
             });
 
+            // Stocker le nombre de candidatures dans le marqueur
+            circleMarker.candidatures = nombreCandidatures;
+
             // Ajouter la popup
             circleMarker.bindPopup(`
                 <b>${lycee.appellation_officielle}</b><br>
@@ -107,10 +120,31 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
             this.markers.addLayer(circleMarker);
         }
     });
+};
 
-    // Ajouter le groupe de clusters à la carte
-    this.map.addLayer(this.markers);
-},
+// Nouvelle méthode pour gérer les clics sur les clusters
+Map.onClusterClick = function(cluster) {
+    // Récupérer tous les marqueurs enfants du cluster
+    const markers = cluster.layer.getAllChildMarkers();
+
+    // Calculer la somme des candidatures
+    const sommeCandidatures = markers.reduce((acc, marker) => acc + (marker.candidatures || 0), 0);
+
+    // Créer le contenu de la popup
+    const popupContent = `
+        <b>Cluster</b><br>
+        <strong>Total des candidatures:</strong> ${sommeCandidatures}
+    `;
+
+    // Créer une popup à la position du cluster
+    const popup = L.popup({
+        closeButton: true,
+        autoClose: true,
+    })
+        .setLatLng(cluster.layer.getLatLng())
+        .setContent(popupContent)
+        .openOn(this.map);
+};
 
 Map.ajouterLegende = async function() {
     const legend = L.control({ position: 'bottomright' });
@@ -133,7 +167,7 @@ Map.ajouterLegende = async function() {
     };
 
     legend.addTo(this.map);
-},
+};
 
 Map.ajouterControleFiltrage = async function() {
     const filtrerCandidatures = L.control({ position: 'topright' });
@@ -151,7 +185,7 @@ Map.ajouterControleFiltrage = async function() {
     };
 
     filtrerCandidatures.addTo(this.map);
-},
+};
 
 Map.ajouterEcouteursFiltres = async function(lycees, candidatures) {
     document.addEventListener('change', (e) => {
@@ -165,6 +199,6 @@ Map.ajouterEcouteursFiltres = async function(lycees, candidatures) {
             this.ajouterMarqueursLycees(lycees, candidatures, { filtre0, filtre1_2, filtre3_5, filtre6 });
         }
     });
-}
+};
 
 export { Map };
