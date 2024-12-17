@@ -146,7 +146,7 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
 Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) {
     for (let deptCp in candidaturesPostBac) {
         let cdata = candidaturesPostBac[deptCp];
-        // Filtres
+        // Application des filtres
         if (
             (cdata.total === 0 && !filtres.filtre0) ||
             (cdata.total >= 1 && cdata.total <= 2 && !filtres.filtre1_2) ||
@@ -157,9 +157,15 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
         }
 
         let coords = await Map.getCoordFromPostalCode(deptCp);
-        if (!coords) continue; 
+        if (!coords) continue; // Pas de coords trouvées
 
-        // Couleurs différentes pour post-bac
+        // Vérification supplémentaire
+        if (isNaN(coords.lat) || isNaN(coords.lng)) {
+            console.warn(`Coordonnées invalides pour ${deptCp}`, coords, "geopoint non existant");
+            continue;
+        }
+
+        // Choix de la couleur
         let couleur;
         if (cdata.total === 0) {
             couleur = 'gray';
@@ -193,6 +199,7 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
         Map.markers.addLayer(circleMarker);
     }
 };
+
 
 Map.ajouterLegende = async function() {
     let legend = L.control({ position: 'bottomright' });
