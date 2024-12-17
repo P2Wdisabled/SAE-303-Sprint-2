@@ -25,7 +25,7 @@ function getFiliere(candidature) {
         const serie = candidature.Baccalaureat.SerieDiplomeCode.toUpperCase();
         if (serie === "STI2D") {
             return "STI2D";
-        } else if (["S", "ES", "L"].includes(serie)) { // Ajouter d'autres séries générales si nécessaire
+        } else if (["S", "ES", "L", "GÉNÉRALE"].includes(serie)) { // Ajouter d'autres séries générales si nécessaire
             return "Générale";
         } else {
             return "Autre";
@@ -41,6 +41,7 @@ C.init = async function(){
     let candidaturesData = Candidats.getAll();
     console.log("Candidatures:", candidaturesData);
     console.log("Lycées:", lyceesData);
+    console.log("Générale = ", "Générale".toUpperCase());
     
     // Compter les candidatures par lycée en filtrant celles qui préparent le bac et les catégoriser par filière
     let candidaturesParLycee = {};
