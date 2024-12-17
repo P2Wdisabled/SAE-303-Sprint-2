@@ -11,12 +11,27 @@ let C = {};
 // Fonction pour obtenir le dernier UAI d'une candidature
 function getLatestUai(candidature) {
     for (let i = 0; i < candidature.Scolarite.length; i++) {
-        const scolarite = candidature.Scolarite[i];
+        let scolarite = candidature.Scolarite[i];
         if (scolarite.UAIEtablissementorigine) {
             return scolarite.UAIEtablissementorigine.toUpperCase();
         }
     }
     return null;
+}
+
+// Fonction pour déterminer la filière
+function getFiliere(candidature) {
+    if (candidature.Baccalaureat && candidature.Baccalaureat.SerieDiplomeCode) {
+        const serie = candidature.Baccalaureat.SerieDiplomeCode.toUpperCase();
+        if (serie === "STI2D") {
+            return "STI2D";
+        } else if (["S", "ES", "L"].includes(serie)) { // Ajouter d'autres séries générales si nécessaire
+            return "Générale";
+        } else {
+            return "Autre";
+        }
+    }
+    return "Autre";
 }
 
 // Fonction d'initialisation
@@ -27,19 +42,39 @@ C.init = async function(){
     console.log("Candidatures:", candidaturesData);
     console.log("Lycées:", lyceesData);
     
-    // Compter les candidatures par lycée
-    const candidaturesParLycee = {};
+    // Compter les candidatures par lycée en filtrant celles qui préparent le bac et les catégoriser par filière
+    let candidaturesParLycee = {};
     candidaturesData.forEach(candidature => {
-        const uai = getLatestUai(candidature);
-        if (uai && uai != null) {
-            if (candidaturesParLycee[uai]) {
-                candidaturesParLycee[uai]++;
-            } else {
-                candidaturesParLycee[uai] = 1;
+        // Vérifier si le candidat prépare le baccalauréat
+        //if (candidature.Baccalaureat && candidature.Baccalaureat.TypeDiplomeCode === 4) {
+            let uai = getLatestUai(candidature);
+            if (uai && uai != null) {
+                // Déterminer la filière
+                let filiere = getFiliere(candidature);
+                
+                // Initialiser l'objet si nécessaire
+                if (!candidaturesParLycee[uai]) {
+                    candidaturesParLycee[uai] = {
+                        total: 0,
+                        generale: 0,
+                        STI2D: 0,
+                        autre: 0
+                    };
+                }
+                
+                // Incrémenter les compteurs
+                candidaturesParLycee[uai].total++;
+                if (filiere === "Générale") {
+                    candidaturesParLycee[uai].generale++;
+                } else if (filiere === "STI2D") {
+                    candidaturesParLycee[uai].STI2D++;
+                } else {
+                    candidaturesParLycee[uai].autre++;
+                }
             }
-        }
+        //}
     });
-    console.log("Candidatures par lycée:", candidaturesParLycee);
+    console.log("Candidatures par lycée (Préparation Bac):", candidaturesParLycee);
 
     // Initialiser la carte en utilisant le composant Map
     Map.init('map', lyceesData, candidaturesParLycee);
