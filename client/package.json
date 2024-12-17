@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "client": "file:",
+    "echarts": "^5.5.1",
     "idb": "^8.0.0",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3"

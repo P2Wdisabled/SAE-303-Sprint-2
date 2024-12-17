@@ -1,21 +1,25 @@
-// src/ui/map/index.js
-
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
+import * as echarts from 'echarts';
 
-// Cette variable doit être remplie à partir du coordonees.json au besoin
-// On le fera à la demande (lazy loading)
 let Map = {};
 
 Map.map = null;
 Map.markers = null;
-Map._coordsData = null; // IT10 : pour stocker les données de coordonees
+Map._coordsData = null;
+Map._lycees = null;
+Map._candidaturesLycees = null;
+Map._candidaturesPostBac = null;
 
 Map.init = async function(containerId, lycees, candidaturesParLycee, candidaturesPostBac) {
-    Map.map = L.map(containerId).setView([45.8336, 1.2611], 13); // Centrer sur Limoges
+    Map._lycees = lycees;
+    Map._candidaturesLycees = candidaturesParLycee;
+    Map._candidaturesPostBac = candidaturesPostBac;
+
+    Map.map = L.map(containerId).setView([45.8336, 1.2611], 13); // Limoges
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
@@ -30,10 +34,9 @@ Map.init = async function(containerId, lycees, candidaturesParLycee, candidature
 
     Map.ajouterLegende();
     Map.ajouterControleFiltrage();
-    Map.ajouterEcouteursFiltres(lycees, candidaturesParLycee, candidaturesPostBac);
+    Map.ajouterEcouteursFiltres(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
 
-    // Afficher les marqueurs (lycées et post-bac)
-    Map.updateMarqueurs(lycees, candidaturesParLycee, candidaturesPostBac);
+    Map.updateMarqueurs(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
 };
 
 Map.onClusterClick = function(cluster) {
@@ -66,7 +69,6 @@ Map.onClusterClick = function(cluster) {
     .openOn(Map.map);
 };
 
-// IT10 : fonction pour charger coordonees.json si pas déjà fait
 Map.loadCoordsData = async function() {
     if (!Map._coordsData) {
         Map._coordsData = await fetch("./src/data/json/coordonees.json").then(r=>r.json());
@@ -74,7 +76,6 @@ Map.loadCoordsData = async function() {
     return Map._coordsData;
 };
 
-// IT10 : fonction pour obtenir les coordonnées d'un code postal (type "45000")
 Map.getCoordFromPostalCode = async function(cp) {
     let data = await Map.loadCoordsData();
     for (let c of data) {
@@ -87,15 +88,12 @@ Map.getCoordFromPostalCode = async function(cp) {
 };
 
 Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) {
-    // Effacer les anciens marqueurs déjà fait dans updateMarqueurs
-    // Ici on ajoute uniquement les lycées
     lycees.forEach(lycee => {
         let lat = parseFloat(lycee.latitude);
         let lng = parseFloat(lycee.longitude);
         let uai = lycee.numero_uai.toUpperCase();
         let candidatureData = candidatures[uai] || { total: 0, generale: 0, STI2D: 0, autre: 0 };
 
-        // Application des filtres
         if (
             (candidatureData.total === 0 && !filtres.filtre0) ||
             (candidatureData.total >= 1 && candidatureData.total <= 2 && !filtres.filtre1_2) ||
@@ -142,11 +140,9 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
     });
 };
 
-// IT10 : nouvelle fonction pour ajouter les marqueurs post-bac
 Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) {
-    for (let deptCp in candidaturesPostBac) {
-        let cdata = candidaturesPostBac[deptCp];
-        // Application des filtres
+    for (let dept in candidaturesPostBac) {
+        let cdata = candidaturesPostBac[dept];
         if (
             (cdata.total === 0 && !filtres.filtre0) ||
             (cdata.total >= 1 && cdata.total <= 2 && !filtres.filtre1_2) ||
@@ -156,16 +152,15 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
             continue;
         }
 
-        let coords = await Map.getCoordFromPostalCode(deptCp);
-        if (!coords) continue; // Pas de coords trouvées
-
-        // Vérification supplémentaire
+        // Pour la carte, on utilise dept + "000" comme code postal principal du département.
+        let postalForMap = dept + "000";
+        let coords = await Map.getCoordFromPostalCode(postalForMap);
+        if (!coords) continue; 
         if (isNaN(coords.lat) || isNaN(coords.lng)) {
-            console.warn(`Coordonnées invalides pour ${deptCp}`, coords, "geopoint non existant");
+            console.warn(`Coordonnées invalides pour ${postalForMap}`, coords);
             continue;
         }
 
-        // Choix de la couleur
         let couleur;
         if (cdata.total === 0) {
             couleur = 'gray';
@@ -188,7 +183,7 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
 
         circleMarker.candidatures = cdata;
         circleMarker.bindPopup(`
-            <b>Post-Bac - ${deptCp}</b><br>
+            <b>Post-Bac - Département ${dept}</b><br>
             <strong>Candidatures Totales:</strong> ${cdata.total}<br>
             <strong>Détails par Filière:</strong><br>
             &nbsp;&nbsp;Générale: ${cdata.generale}<br>
@@ -200,7 +195,6 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
     }
 };
 
-
 Map.ajouterLegende = async function() {
     let legend = L.control({ position: 'bottomright' });
     legend.onAdd = function (map) {
@@ -210,22 +204,19 @@ Map.ajouterLegende = async function() {
         let colors = ['gray', 'blue', 'orange', 'red'];
 
         div.innerHTML += '<h4>Candidatures (Lycées)</h4>';
-
         for (let i = 0; i < grades.length; i++) {
             div.innerHTML +=
-                `<i style="background:${colors[i]}; width: 18px; height: 18px; display: inline-block; border-radius: 50%; margin-right: 8px;"></i> ` +
+                `<i style="background:${colors[i]}; width: 18px; height: 18px; display:inline-block; border-radius:50%; margin-right:8px;"></i> ` +
                 `${labels[i]}<br>`;
         }
 
-        // IT10 : On peut aussi ajouter une légende pour post-bac
         div.innerHTML += '<hr><h4>Post-Bac</h4>';
-        div.innerHTML += '<i style="background:green; width:18px; height:18px; display:inline-block; border-radius:50%; margin-right:8px;"></i> Peu de candidats<br>';
+        div.innerHTML += '<i style="background:green; width:18px; height:18px; display:inline-block; border-radius:50%; margin-right:8px;"></i> Peu<br>';
         div.innerHTML += '<i style="background:darkgreen; width:18px; height:18px; display:inline-block; border-radius:50%; margin-right:8px;"></i> Moyenne<br>';
         div.innerHTML += '<i style="background:purple; width:18px; height:18px; display:inline-block; border-radius:50%; margin-right:8px;"></i> Nombreux<br>';
 
         return div;
     };
-
     legend.addTo(Map.map);
 };
 
@@ -257,9 +248,10 @@ Map.updateMarqueurs = async function(lycees, candidatures, candidaturesPostBac) 
         Map.markers.clearLayers();
     }
 
-    // Ré-ajouter les marqueurs
     await Map.ajouterMarqueursLycees(lycees, candidatures, { filtre0, filtre1_2, filtre3_5, filtre6 });
-    await Map.ajouterMarqueursPostBac(candidaturesPostBac, { filtre0, filtre1_2, filtre3_5, filtre6 });
+    await Map.ajouterMarqueursPostBac(Map._candidaturesPostBac, { filtre0, filtre1_2, filtre3_5, filtre6 });
+
+    Map.updateChart(lycees, candidatures, Map._candidaturesPostBac);
 };
 
 Map.ajouterEcouteursFiltres = async function(lycees, candidatures, candidaturesPostBac) {
@@ -268,6 +260,108 @@ Map.ajouterEcouteursFiltres = async function(lycees, candidatures, candidaturesP
             Map.updateMarqueurs(lycees, candidatures, candidaturesPostBac);
         }
     });
+};
+
+// IT11: Mettre à jour le graphique ECharts
+Map.updateChart = function(lycees, candidaturesLycee, candidaturesPostBac) {
+    // Agréger par département
+    let candidaturesParDept = {};
+
+    // Lycees
+    lycees.forEach(lycee => {
+        let uai = lycee.numero_uai.toUpperCase();
+        let data = candidaturesLycee[uai];
+        if (!data) return;
+        let dept = lycee.code_departement; 
+        // On prend les 2 premiers chiffres (hypothèse)
+        dept = dept.substring(0,2);
+        if (!candidaturesParDept[dept]) {
+            candidaturesParDept[dept] = {postbac:0, generale:0, sti2d:0, autre:0};
+        }
+        candidaturesParDept[dept].generale += data.generale;
+        candidaturesParDept[dept].sti2d += data.STI2D;
+        candidaturesParDept[dept].autre += data.autre;
+    });
+
+    // Post-bac
+    for (let dept in candidaturesPostBac) {
+        let data = candidaturesPostBac[dept];
+        if (!candidaturesParDept[dept]) {
+            candidaturesParDept[dept] = {postbac:0, generale:0, sti2d:0, autre:0};
+        }
+        candidaturesParDept[dept].postbac += data.total;
+    }
+
+    let depts = Object.keys(candidaturesParDept).sort();
+    let postbacData = [];
+    let generaleData = [];
+    let sti2dData = [];
+    let autreData = [];
+
+    depts.forEach(d => {
+        let dd = candidaturesParDept[d];
+        postbacData.push(dd.postbac);
+        generaleData.push(dd.generale);
+        sti2dData.push(dd.sti2d);
+        autreData.push(dd.autre);
+    });
+
+    let chartDom = document.getElementById('chart');
+    let myChart = echarts.init(chartDom);
+
+    let option = {
+        title: {
+            text: 'Candidatures par Département',
+            left: 'center'
+        },
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: {type: 'shadow'}
+        },
+        legend: {
+            bottom: '0',
+            data: ['Post-bac', 'Générale', 'STI2D', 'Autre']
+        },
+        grid: {
+            left: '3%', right: '4%', bottom: '10%', containLabel: true
+        },
+        xAxis: {
+            type: 'value',
+            boundaryGap: [0, 0.01]
+        },
+        yAxis: {
+            type: 'category',
+            data: depts
+        },
+        series: [
+            {
+                name: 'Post-bac',
+                type: 'bar',
+                stack: 'total',
+                data: postbacData
+            },
+            {
+                name: 'Générale',
+                type: 'bar',
+                stack: 'total',
+                data: generaleData
+            },
+            {
+                name: 'STI2D',
+                type: 'bar',
+                stack: 'total',
+                data: sti2dData
+            },
+            {
+                name: 'Autre',
+                type: 'bar',
+                stack: 'total',
+                data: autreData
+            }
+        ]
+    };
+
+    myChart.setOption(option);
 };
 
 export { Map };
