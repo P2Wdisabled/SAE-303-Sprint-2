@@ -13,13 +13,14 @@ Map._coordsData = null;
 Map._lycees = null;
 Map._candidaturesLycees = null;
 Map._candidaturesPostBac = null;
+Map._threshold = 3; // IT12: seuil par défaut
 
 Map.init = async function(containerId, lycees, candidaturesParLycee, candidaturesPostBac) {
     Map._lycees = lycees;
     Map._candidaturesLycees = candidaturesParLycee;
     Map._candidaturesPostBac = candidaturesPostBac;
 
-    Map.map = L.map(containerId).setView([45.8336, 1.2611], 13); // Limoges
+    Map.map = L.map(containerId).setView([45.8336, 1.2611], 13);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
@@ -35,6 +36,7 @@ Map.init = async function(containerId, lycees, candidaturesParLycee, candidature
     Map.ajouterLegende();
     Map.ajouterControleFiltrage();
     Map.ajouterEcouteursFiltres(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
+    Map.ajouterControleSeuil(); // IT12: ajouter écouteur sur le slider
 
     Map.updateMarqueurs(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
 };
@@ -152,7 +154,6 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
             continue;
         }
 
-        // Pour la carte, on utilise dept + "000" comme code postal principal du département.
         let postalForMap = dept + "000";
         let coords = await Map.getCoordFromPostalCode(postalForMap);
         if (!coords) continue; 
@@ -206,7 +207,7 @@ Map.ajouterLegende = async function() {
         div.innerHTML += '<h4>Candidatures (Lycées)</h4>';
         for (let i = 0; i < grades.length; i++) {
             div.innerHTML +=
-                `<i style="background:${colors[i]}; width: 18px; height: 18px; display:inline-block; border-radius:50%; margin-right:8px;"></i> ` +
+                `<i style="background:${colors[i]}; width:18px; height:18px; display:inline-block; border-radius:50%; margin-right:8px;"></i> ` +
                 `${labels[i]}<br>`;
         }
 
@@ -262,18 +263,27 @@ Map.ajouterEcouteursFiltres = async function(lycees, candidatures, candidaturesP
     });
 };
 
-// IT11: Mettre à jour le graphique ECharts
+// IT12: Ajouter écouteur sur le slider de seuil
+Map.ajouterControleSeuil = function() {
+    let slider = document.getElementById('thresholdSlider');
+    let thresholdVal = document.getElementById('thresholdValue');
+    slider.addEventListener('input', (e) => {
+        Map._threshold = parseInt(e.target.value);
+        thresholdVal.textContent = Map._threshold;
+        // Mettre à jour uniquement le chart
+        Map.updateChart(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
+    });
+};
+
 Map.updateChart = function(lycees, candidaturesLycee, candidaturesPostBac) {
-    // Agréger par département
     let candidaturesParDept = {};
 
-    // Lycees
+    // Agrégation lycées
     lycees.forEach(lycee => {
         let uai = lycee.numero_uai.toUpperCase();
         let data = candidaturesLycee[uai];
         if (!data) return;
-        let dept = lycee.code_departement; 
-        // On prend les 2 premiers chiffres (hypothèse)
+        let dept = lycee.code_departement;
         dept = dept.substring(0,2);
         if (!candidaturesParDept[dept]) {
             candidaturesParDept[dept] = {postbac:0, generale:0, sti2d:0, autre:0};
@@ -283,7 +293,7 @@ Map.updateChart = function(lycees, candidaturesLycee, candidaturesPostBac) {
         candidaturesParDept[dept].autre += data.autre;
     });
 
-    // Post-bac
+    // Agrégation post-bac
     for (let dept in candidaturesPostBac) {
         let data = candidaturesPostBac[dept];
         if (!candidaturesParDept[dept]) {
@@ -292,21 +302,46 @@ Map.updateChart = function(lycees, candidaturesLycee, candidaturesPostBac) {
         candidaturesParDept[dept].postbac += data.total;
     }
 
-    let depts = Object.keys(candidaturesParDept).sort();
-    let postbacData = [];
-    let generaleData = [];
-    let sti2dData = [];
-    let autreData = [];
-
-    depts.forEach(d => {
+    // Convertir en tableau pour trier
+    let deptArray = Object.keys(candidaturesParDept).map(d => {
         let dd = candidaturesParDept[d];
-        postbacData.push(dd.postbac);
-        generaleData.push(dd.generale);
-        sti2dData.push(dd.sti2d);
-        autreData.push(dd.autre);
+        // Calcul du total
+        let total = dd.postbac + dd.generale + dd.sti2d + dd.autre;
+        return {dept:d, ...dd, total};
     });
 
-    let chartDom = document.getElementById('chart');
+    // Tri décroissant par total
+    deptArray.sort((a,b) => b.total - a.total);
+
+    // IT12: Regrouper les départements avec total ≤ Map._threshold dans "Autres départements"
+    if (Map._threshold > 0) {
+        let regroupes = {dept:"Autres", postbac:0, generale:0, sti2d:0, autre:0, total:0};
+        let filteredArray = [];
+        deptArray.forEach(item => {
+            if (item.total <= Map._threshold) {
+                regroupes.postbac += item.postbac;
+                regroupes.generale += item.generale;
+                regroupes.sti2d += item.sti2d;
+                regroupes.autre += item.autre;
+                regroupes.total += item.total;
+            } else {
+                filteredArray.push(item);
+            }
+        });
+        // S’il y a des départements regroupés
+        if (regroupes.total > 0) {
+            filteredArray.push(regroupes);
+        }
+        deptArray = filteredArray;
+    }
+
+    let depts = deptArray.map(d => d.dept);
+    let postbacData = deptArray.map(d => d.postbac);
+    let generaleData = deptArray.map(d => d.generale);
+    let sti2dData = deptArray.map(d => d.sti2d);
+    let autreData = deptArray.map(d => d.autre);
+
+    let chartDom = document.getElementById('chartContainer');
     let myChart = echarts.init(chartDom);
 
     let option = {

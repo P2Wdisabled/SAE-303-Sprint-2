@@ -7,7 +7,6 @@ import './index.css';
 
 let C = {};
 
-// Fonctions utilitaires
 function getLatestUai(candidature) {
     for (let i = 0; i < candidature.Scolarite.length; i++) {
         let scolarite = candidature.Scolarite[i];
@@ -33,7 +32,6 @@ function getFiliere(candidature) {
 }
 
 function isPostBac(candidature) {
-    // TypeDiplomeCode : 4 = en préparation, 1 ou 2 = post-bac
     if (candidature.Baccalaureat && (candidature.Baccalaureat.TypeDiplomeCode === 1 || candidature.Baccalaureat.TypeDiplomeCode === 2)) {
         return true;
     }
@@ -50,7 +48,6 @@ function getRecentCodePostal(candidature) {
 }
 
 function getDepartementFromCodePostal(cp) {
-    // On prend les 2 premiers chiffres
     let dept = cp.substring(0, 2);
     return dept;
 }
@@ -83,7 +80,7 @@ C.init = async function() {
                 }
             }
         } else {
-            // Bac en préparation (TypeDiplomeCode = 4)
+            // Bac en préparation (TypeDiplomeCode=4)
             let uai = getLatestUai(candidature);
             if (uai && uai != null) {
                 if (!candidaturesParLycee[uai]) {
