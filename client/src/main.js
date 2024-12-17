@@ -80,7 +80,6 @@ C.init = async function() {
                 }
             }
         } else {
-            // Bac en préparation (TypeDiplomeCode=4)
             let uai = getLatestUai(candidature);
             if (uai && uai != null) {
                 if (!candidaturesParLycee[uai]) {

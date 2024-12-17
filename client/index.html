@@ -24,11 +24,11 @@
             width:100%; height:calc(100% - 50px);
         }
         #map {
-            flex:3; /* 3/4 de la largeur */
+            flex:3; 
             position:relative;
         }
         #chart {
-            flex:1; /* 1/4 de la largeur */
+            flex:1; 
             height:100%;
             display:flex;
             flex-direction:column;
@@ -38,11 +38,14 @@
             position:relative;
         }
         #chartControls {
-            height:60px;
+            height:auto;
             background:#eee;
             padding:10px;
         }
-        #thresholdValue {
+        .control-section {
+            margin-bottom:10px;
+        }
+        #thresholdValue, #radiusValue {
             font-weight:bold;
         }
     </style>
@@ -54,8 +57,15 @@
         <div id="chart">
             <div id="chartContainer"></div>
             <div id="chartControls">
-                <label>Seuil de regroupement : <span id="thresholdValue">3</span></label><br>
-                <input type="range" id="thresholdSlider" min="0" max="20" step="1" value="3">
+                <div class="control-section">
+                    <label>Seuil de regroupement : <span id="thresholdValue">3</span></label><br>
+                    <input type="range" id="thresholdSlider" min="0" max="20" step="1" value="3">
+                </div>
+                <div class="control-section">
+                    <label>Rayon (km) autour de Limoges : <span id="radiusValue">10</span></label><br>
+                    <input type="range" id="radiusSlider" min="1" max="8000" step="1" value="10">
+                    <p>Note: Ajustez le rayon. Si vous souhaitez désactiver ce filtre, réglez-le suffisamment grand (ex: 9000) pour couvrir tous les établissements.</p>
+                </div>
             </div>
         </div>
     </div>
