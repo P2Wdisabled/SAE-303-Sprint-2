@@ -38,7 +38,6 @@
             position:relative;
         }
         #chartControls {
-            height:auto;
             background:#eee;
             padding:10px;
         }
@@ -62,9 +61,15 @@
                     <input type="range" id="thresholdSlider" min="0" max="20" step="1" value="3">
                 </div>
                 <div class="control-section">
-                    <label>Rayon (km) autour de Limoges : <span id="radiusValue">10</span></label><br>
-                    <input type="range" id="radiusSlider" min="1" max="8000" step="1" value="10">
-                    <p>Note: Ajustez le rayon. Si vous souhaitez désactiver ce filtre, réglez-le suffisamment grand (ex: 8000) pour couvrir tous les établissements.</p>
+                    <label>Rayon (km) autour de Limoges : <span id="radiusValue">650</span></label><br>
+                    <input type="range" id="radiusSlider" min="1" max="9000" step="1" value="650">
+                </div>
+                <div class="control-section">
+                    <h4>Catégories</h4>
+                    <label><input type="checkbox" id="catPostBac" checked> Post-bac</label><br>
+                    <label><input type="checkbox" id="catGenerale" checked> Générale</label><br>
+                    <label><input type="checkbox" id="catSTI2D" checked> STI2D</label><br>
+                    <label><input type="checkbox" id="catAutre" checked> Autres</label><br>
                 </div>
             </div>
         </div>

@@ -1,27 +1,12 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
+import { Coordonees } from "../../data/data-coordonees";
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import * as echarts from 'echarts';
 
-// Distance "à vol d'oiseau" entre 2 points géographiques
-function distanceVolDoiseau(lat_a, lon_a, lat_b, lon_b) {
-    let a = Math.PI / 180;
-    let lat1 = lat_a * a;
-    let lat2 = lat_b * a;
-    let lon1 = lon_a * a;
-    let lon2 = lon_b * a;
 
-    let t1 = Math.sin(lat1)*Math.sin(lat2);
-    let t2 = Math.cos(lat1)*Math.cos(lat2);
-    let t3 = Math.cos(lon1 - lon2);
-    let t4 = t2*t3;
-    let t5 = t1+t4;
-    let rad_dist = Math.atan(-t5/Math.sqrt(-t5 * t5 +1)) + 2 * Math.atan(1);
-
-    return (rad_dist * 3437.74677 * 1.1508) * 1.6093470878864446;
-}
 
 let Map = {};
 
@@ -32,8 +17,15 @@ Map._lycees = null;
 Map._candidaturesLycees = null;
 Map._candidaturesPostBac = null;
 Map._threshold = 3; 
-Map._radius = 10; // IT13: rayon par défaut
-Map._center = {lat:45.8336, lng:1.2611}; // Centre Limoges
+Map._radius = 650; 
+Map._center = {lat:45.8336, lng:1.2611};
+
+Map._catFilters = {
+    postBac: true,
+    generale: true,
+    sti2d: true,
+    autre: true
+};
 
 Map.init = async function(containerId, lycees, candidaturesParLycee, candidaturesPostBac) {
     Map._lycees = lycees;
@@ -57,7 +49,8 @@ Map.init = async function(containerId, lycees, candidaturesParLycee, candidature
     Map.ajouterControleFiltrage();
     Map.ajouterEcouteursFiltres(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
     Map.ajouterControleSeuil();
-    Map.ajouterControleRayon(); // IT13: ajouter écouteur sur le slider de rayon
+    Map.ajouterControleRayon();
+    Map.ajouterControleCategories();
 
     Map.updateMarqueurs(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
 };
@@ -67,20 +60,25 @@ Map.onClusterClick = function(cluster) {
     let sommeCandidatures = { total: 0, generale: 0, STI2D: 0, autre: 0 };
     markers.forEach(marker => {
         if (marker.candidatures) {
-            sommeCandidatures.total += marker.candidatures.total;
-            sommeCandidatures.generale += marker.candidatures.generale;
-            sommeCandidatures.STI2D += marker.candidatures.STI2D;
-            sommeCandidatures.autre += marker.candidatures.autre;
+            let cdata = Map.filteredCandidatureData(marker.candidatures);
+            sommeCandidatures.g = cdata.generale;
+            sommeCandidatures.S = cdata.STI2D;
+            sommeCandidatures.a = cdata.autre;
+            sommeCandidatures.total += cdata.total;
+            sommeCandidatures.generale += cdata.generale;
+            sommeCandidatures.STI2D += cdata.STI2D;
+            sommeCandidatures.autre += cdata.autre;
         }
     });
-
+    let sommePostBac = sommeCandidatures.total - sommeCandidatures.generale - sommeCandidatures.STI2D - sommeCandidatures.autre
     let popupContent = `
         <b>Cluster</b><br>
         <strong>Total des candidatures:</strong> ${sommeCandidatures.total}<br>
         <strong>Détails par Filière:</strong><br>
         &nbsp;&nbsp;Générale: ${sommeCandidatures.generale}<br>
         &nbsp;&nbsp;STI2D: ${sommeCandidatures.STI2D}<br>
-        &nbsp;&nbsp;Autre: ${sommeCandidatures.autre}
+        &nbsp;&nbsp;Autre: ${sommeCandidatures.autre}<br>
+        &nbsp;&nbsp;Post-Bac: ${sommePostBac} (définir marker postbac)
     `;
 
     let popup = L.popup({
@@ -110,91 +108,152 @@ Map.getCoordFromPostalCode = async function(cp) {
     return null;
 };
 
+Map.filteredCandidatureData = function(originalData) {
+    let result = {total:0, generale:0, STI2D:0, autre:0};
+    let isPostBac = originalData.isPostBac;
+
+    // Récupérer l'état des catégories filières
+    let filiereSelected = (Map._catFilters.generale || Map._catFilters.sti2d || Map._catFilters.autre);
+
+    if (isPostBac) {
+        if (Map._catFilters.postBac) {
+            if (filiereSelected) {
+                let g = Map._catFilters.generale ? originalData.generale : 0;
+                let s = Map._catFilters.sti2d ? originalData.STI2D : 0;
+                let a = Map._catFilters.autre ? originalData.autre : 0;
+                let tot = g+s+a;
+                result.total = tot;
+                result.generale = g;
+                result.STI2D = s;
+                result.autre = a;
+            } else {
+                let tot = originalData.postbacCount || originalData.total;
+                
+                result.total = tot;
+            }
+        } else {
+            result.total = 0;
+        }
+    } else {
+        let g = Map._catFilters.generale ? originalData.generale : 0;
+        let s = Map._catFilters.sti2d ? originalData.STI2D : 0;
+        let a = Map._catFilters.autre ? originalData.autre : 0;
+        let tot = g+s+a;
+        result.total = tot;
+        result.generale = g;
+        result.STI2D = s;
+        result.autre = a;
+    }
+
+    return result;
+};
+
+
 Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) {
     lycees.forEach(lycee => {
         let lat = parseFloat(lycee.latitude);
         let lng = parseFloat(lycee.longitude);
         let uai = lycee.numero_uai.toUpperCase();
-        let candidatureData = candidatures[uai] || { total: 0, generale: 0, STI2D: 0, autre: 0 };
+        let originalData = candidatures[uai] || { total: 0, generale: 0, STI2D: 0, autre: 0 };
+        originalData.isPostBac = false; 
 
-        // Filtre rayon : calcul de la distance depuis Limoges
-        let dist = distanceVolDoiseau(Map._center.lat, Map._center.lng, lat, lng);
+        let dist = Coordonees.distanceVolDoiseau(Map._center.lat, Map._center.lng, lat, lng);
         if (dist > Map._radius) {
-            return; // hors rayon
-        }
-
-        // Filtres de candidatures
-        if (
-            (candidatureData.total === 0 && !filtres.filtre0) ||
-            (candidatureData.total >= 1 && candidatureData.total <= 2 && !filtres.filtre1_2) ||
-            (candidatureData.total >= 3 && candidatureData.total <= 5 && !filtres.filtre3_5) ||
-            (candidatureData.total >= 6 && !filtres.filtre6)
-        ) {
             return;
         }
 
-        if (!isNaN(lat) && !isNaN(lng)) {
-            let couleur;
-            if (candidatureData.total === 0) {
-                couleur = 'gray';
-            } else if (candidatureData.total <= 2) {
-                couleur = 'blue';
-            } else if (candidatureData.total <= 5) {
-                couleur = 'orange';
-            } else {
-                couleur = 'red';
-            }
+        let cdata = Map.filteredCandidatureData(originalData);
 
-            let circleMarker = L.circleMarker([lat, lng], {
-                radius: 6 + candidatureData.total,
-                fillColor: couleur,
-                color: couleur,
-                weight: 1,
-                opacity: 1,
-                fillOpacity: 0.8
-            });
-
-            circleMarker.candidatures = candidatureData;
-            circleMarker.bindPopup(`
-                <b>${lycee.appellation_officielle}</b><br>
-                ${lycee.adresse_uai || 'Adresse non disponible'}<br>
-                <strong>Candidatures Totales:</strong> ${candidatureData.total}<br>
-                <strong>Détails par Filière:</strong><br>
-                &nbsp;&nbsp;Générale: ${candidatureData.generale}<br>
-                &nbsp;&nbsp;STI2D: ${candidatureData.STI2D}<br>
-                &nbsp;&nbsp;Autre: ${candidatureData.autre}
-            `);
-
-            Map.markers.addLayer(circleMarker);
-        }
-    });
-};
-
-Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) {
-    for (let dept in candidaturesPostBac) {
-        let cdata = candidaturesPostBac[dept];
-
-        let postalForMap = dept + "000";
-        let coords = await Map.getCoordFromPostalCode(postalForMap);
-        if (!coords) continue; 
-        if (isNaN(coords.lat) || isNaN(coords.lng)) {
-            console.warn(`Coordonnées invalides pour ${postalForMap}`, coords);
-            continue;
-        }
-
-        // Filtre rayon
-        let dist = distanceVolDoiseau(Map._center.lat, Map._center.lng, coords.lat, coords.lng);
-        if (dist > Map._radius) {
-            continue;
-        }
-
-        // Filtres
         if (
             (cdata.total === 0 && !filtres.filtre0) ||
             (cdata.total >= 1 && cdata.total <= 2 && !filtres.filtre1_2) ||
             (cdata.total >= 3 && cdata.total <= 5 && !filtres.filtre3_5) ||
             (cdata.total >= 6 && !filtres.filtre6)
         ) {
+            return;
+        }
+
+        if (cdata.total === 0) {
+            return; 
+        }
+
+        
+        let couleur;
+        if (cdata.total === 0) {
+            couleur = 'gray';
+        } else if (cdata.total <= 2) {
+            couleur = 'blue';
+        } else if (cdata.total <= 5) {
+            couleur = 'orange';
+        } else {
+            couleur = 'red';
+        }
+        
+        // Vérifier que lat et lng sont valides
+        if (isNaN(lat) || isNaN(lng)) {
+            console.warn(`Coordonnées invalides pour le lycée : ${lycee.appellation_officielle}`, lycee);
+            return; // Ne pas créer de marqueur
+        }
+        let circleMarker = L.circleMarker([lat, lng], {
+            radius: 6 + cdata.total,
+            fillColor: couleur,
+            color: couleur,
+            weight: 1,
+            opacity: 1,
+            fillOpacity: 0.8
+        });
+
+        // Stocker data filtrée + isPostBac
+        cdata.isPostBac = false;
+        circleMarker.candidatures = cdata;
+        let sommePostBac = cdata.total - cdata.generale - cdata.STI2D - cdata.autre
+    
+        circleMarker.bindPopup(`
+            <b>${lycee.appellation_officielle}</b><br>
+            ${lycee.adresse_uai || 'Adresse non disponible'}<br>
+            <strong>Candidatures Totales:</strong> ${cdata.total}<br>
+            <strong>Détails par Filière:</strong><br>
+            &nbsp;&nbsp;Générale: ${cdata.generale}<br>
+            &nbsp;&nbsp;STI2D: ${cdata.STI2D}<br>
+            &nbsp;&nbsp;Autre: ${cdata.autre}
+            &nbsp;&nbsp;Post-Bac: ${sommePostBac} (définir marker postbac)
+        `);
+
+        Map.markers.addLayer(circleMarker);
+    });
+};
+
+Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) {
+    for (let dept in candidaturesPostBac) {
+        let originalData = candidaturesPostBac[dept];
+        originalData.isPostBac = true; // IT14
+
+        let postalForMap = dept + "000";
+        let coords = await Map.getCoordFromPostalCode(postalForMap);
+
+        // Si pas de coords, fallback sur Limoges par exemple
+        if (!coords || isNaN(coords.lat) || isNaN(coords.lng)) {
+            console.warn(`Aucune coordonnée valide pour ${postalForMap}. Utilisation du fallback centre.`);
+            coords = {lat: Map._center.lat, lng: Map._center.lng};
+        }
+
+        let dist = Coordonees.distanceVolDoiseau(Map._center.lat, Map._center.lng, coords.lat, coords.lng);
+        if (dist > Map._radius) {
+            continue;
+        }
+
+        let cdata = Map.filteredCandidatureData(originalData);
+
+        if (
+            (cdata.total === 0 && !filtres.filtre0) ||
+            (cdata.total >= 1 && cdata.total <= 2 && !filtres.filtre1_2) ||
+            (cdata.total >= 3 && cdata.total <= 5 && !filtres.filtre3_5) ||
+            (cdata.total >= 6 && !filtres.filtre6)
+        ) {
+            continue;
+        }
+
+        if (cdata.total === 0) {
             continue;
         }
 
@@ -218,19 +277,24 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
             fillOpacity: 0.8
         });
 
+        cdata.isPostBac = true;
         circleMarker.candidatures = cdata;
+        let sommePostBac = cdata.total - cdata.generale - cdata.STI2D - cdata.autre
+
         circleMarker.bindPopup(`
             <b>Post-Bac - Département ${dept}</b><br>
             <strong>Candidatures Totales:</strong> ${cdata.total}<br>
             <strong>Détails par Filière:</strong><br>
             &nbsp;&nbsp;Générale: ${cdata.generale}<br>
             &nbsp;&nbsp;STI2D: ${cdata.STI2D}<br>
-            &nbsp;&nbsp;Autre: ${cdata.autre}
+            &nbsp;&nbsp;Autre: ${cdata.autre}<br>
+            &nbsp;&nbsp;Post-Bac: ${sommePostBac} (définir marker postbac)
         `);
 
         Map.markers.addLayer(circleMarker);
     }
 };
+
 
 Map.ajouterLegende = async function() {
     let legend = L.control({ position: 'bottomright' });
@@ -309,7 +373,6 @@ Map.ajouterControleSeuil = function() {
     });
 };
 
-// IT13: Ajouter un contrôle pour le rayon
 Map.ajouterControleRayon = function() {
     let slider = document.getElementById('radiusSlider');
     let radiusVal = document.getElementById('radiusValue');
@@ -320,39 +383,55 @@ Map.ajouterControleRayon = function() {
     });
 };
 
-Map.updateChart = async function(lycees, candidaturesLycee, candidaturesPostBac) {
-    // Filtrage par rayon pour la partie chart également
-    // Il faut filtrer les lycées et post-bac par distance avant d'agréger.
-    let coordsData = await Map.loadCoordsData();
+// IT14: Ajouter écouteurs pour les catégories
+Map.ajouterControleCategories = function() {
+    let cats = ['catPostBac', 'catGenerale', 'catSTI2D', 'catAutre'];
+    cats.forEach(id => {
+        document.getElementById(id).addEventListener('change', (e) => {
+            Map._catFilters.postBac = document.getElementById('catPostBac').checked;
+            Map._catFilters.generale = document.getElementById('catGenerale').checked;
+            Map._catFilters.sti2d = document.getElementById('catSTI2D').checked;
+            Map._catFilters.autre = document.getElementById('catAutre').checked;
+            Map.updateMarqueurs(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
+        });
+    });
+};
 
-    // Créer une map {dept -> données} comme avant, mais seulement pour ceux dans le rayon
+Map.updateChart = async function(lycees, candidaturesLycee, candidaturesPostBac) {
+    let coordsData = await Map.loadCoordsData();
     let candidaturesParDept = {};
 
     // Pour les lycées
     for (let lycee of lycees) {
         let uai = lycee.numero_uai.toUpperCase();
-        let data = candidaturesLycee[uai];
-        if (!data) continue;
+        let originalData = candidaturesLycee[uai];
+        if (!originalData) continue;
+        originalData.isPostBac = false;
 
         let lat = parseFloat(lycee.latitude);
         let lng = parseFloat(lycee.longitude);
-
-        // Filtre par rayon
-        let dist = distanceVolDoiseau(Map._center.lat, Map._center.lng, lat, lng);
+        let dist = Coordonees.distanceVolDoiseau(Map._center.lat, Map._center.lng, lat, lng);
         if (dist > Map._radius) continue;
 
-        let dept = lycee.code_departement.substring(0,2);
-        if (!candidaturesParDept[dept]) {
-            candidaturesParDept[dept] = {postbac:0, generale:0, sti2d:0, autre:0};
+        let cdata = Map.filteredCandidatureData(originalData);
+        if (cdata.total > 0) {
+            let dept = lycee.code_departement.substring(0,2);
+            if (!candidaturesParDept[dept]) {
+                candidaturesParDept[dept] = {postbac:0, generale:0, sti2d:0, autre:0, total:0};
+            }
+            // cdata représente déjà postbac? Non cdata.isPostBac=false => pas de postbac
+            // Juste ajouter filières
+            candidaturesParDept[dept].generale += cdata.generale;
+            candidaturesParDept[dept].sti2d += cdata.STI2D;
+            candidaturesParDept[dept].autre += cdata.autre;
+            candidaturesParDept[dept].total += cdata.total;
         }
-        candidaturesParDept[dept].generale += data.generale;
-        candidaturesParDept[dept].sti2d += data.STI2D;
-        candidaturesParDept[dept].autre += data.autre;
     }
 
     // Post-bac
     for (let dept in candidaturesPostBac) {
-        let data = candidaturesPostBac[dept];
+        let originalData = candidaturesPostBac[dept];
+        originalData.isPostBac = true;
         let postalForMap = dept + "000";
         let coords = coordsData.find(c => c.code_postal === postalForMap);
         if (!coords) continue;
@@ -360,26 +439,29 @@ Map.updateChart = async function(lycees, candidaturesLycee, candidaturesPostBac)
         let lat = parseFloat(parts[0]);
         let lng = parseFloat(parts[1]);
 
-        let dist = distanceVolDoiseau(Map._center.lat, Map._center.lng, lat, lng);
+        let dist = Coordonees.distanceVolDoiseau(Map._center.lat, Map._center.lng, lat, lng);
         if (dist > Map._radius) continue;
 
-        if (!candidaturesParDept[dept]) {
-            candidaturesParDept[dept] = {postbac:0, generale:0, sti2d:0, autre:0};
+        let cdata = Map.filteredCandidatureData(originalData);
+        if (cdata.total > 0) {
+            if (!candidaturesParDept[dept]) {
+                candidaturesParDept[dept] = {postbac:0, generale:0, sti2d:0, autre:0, total:0};
+            }
+            candidaturesParDept[dept].postbac += cdata.total;
+            candidaturesParDept[dept].generale += cdata.generale;
+            candidaturesParDept[dept].sti2d += cdata.STI2D;
+            candidaturesParDept[dept].autre += cdata.autre;
+            candidaturesParDept[dept].total += cdata.total;
         }
-        candidaturesParDept[dept].postbac += data.total;
     }
 
-    // Convertir en tableau
     let deptArray = Object.keys(candidaturesParDept).map(d => {
         let dd = candidaturesParDept[d];
-        let total = dd.postbac + dd.generale + dd.sti2d + dd.autre;
-        return {dept:d, ...dd, total};
+        return {dept:d, ...dd};
     });
 
-    // Tri décroissant par total
     deptArray.sort((a,b) => b.total - a.total);
 
-    // Regroupement sous le seuil
     if (Map._threshold > 0) {
         let regroupes = {dept:"Autres", postbac:0, generale:0, sti2d:0, autre:0, total:0};
         let filteredArray = [];
@@ -401,10 +483,30 @@ Map.updateChart = async function(lycees, candidaturesLycee, candidaturesPostBac)
     }
 
     let depts = deptArray.map(d => d.dept);
-    let postbacData = deptArray.map(d => d.postbac);
-    let generaleData = deptArray.map(d => d.generale);
-    let sti2dData = deptArray.map(d => d.sti2d);
-    let autreData = deptArray.map(d => d.autre);
+    let series = [];
+    let legend = [];
+
+    function addSeriesIfChecked(name, field) {
+        let selected = false;
+        if (name === 'Post-bac') selected = Map._catFilters.postBac;
+        else if (name === 'Générale') selected = Map._catFilters.generale;
+        else if (name === 'STI2D') selected = Map._catFilters.sti2d;
+        else if (name === 'Autre') selected = Map._catFilters.autre;
+        if (selected) {
+            series.push({
+                name: name,
+                type: 'bar',
+                stack: 'total',
+                data: deptArray.map(d => d[field])
+            });
+            legend.push(name);
+        }
+    }
+
+    addSeriesIfChecked('Post-bac', 'postbac');
+    addSeriesIfChecked('Générale', 'generale');
+    addSeriesIfChecked('STI2D', 'sti2d');
+    addSeriesIfChecked('Autre', 'autre');
 
     let chartDom = document.getElementById('chartContainer');
     let myChart = echarts.init(chartDom);
@@ -420,7 +522,7 @@ Map.updateChart = async function(lycees, candidaturesLycee, candidaturesPostBac)
         },
         legend: {
             bottom: '0',
-            data: ['Post-bac', 'Générale', 'STI2D', 'Autre']
+            data: legend
         },
         grid: {
             left: '3%', right: '4%', bottom: '10%', containLabel: true
@@ -433,32 +535,7 @@ Map.updateChart = async function(lycees, candidaturesLycee, candidaturesPostBac)
             type: 'category',
             data: depts
         },
-        series: [
-            {
-                name: 'Post-bac',
-                type: 'bar',
-                stack: 'total',
-                data: postbacData
-            },
-            {
-                name: 'Générale',
-                type: 'bar',
-                stack: 'total',
-                data: generaleData
-            },
-            {
-                name: 'STI2D',
-                type: 'bar',
-                stack: 'total',
-                data: sti2dData
-            },
-            {
-                name: 'Autre',
-                type: 'bar',
-                stack: 'total',
-                data: autreData
-            }
-        ]
+        series: series
     };
 
     myChart.setOption(option);

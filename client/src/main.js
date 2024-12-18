@@ -7,15 +7,7 @@ import './index.css';
 
 let C = {};
 
-function getLatestUai(candidature) {
-    for (let i = 0; i < candidature.Scolarite.length; i++) {
-        let scolarite = candidature.Scolarite[i];
-        if (scolarite.UAIEtablissementorigine) {
-            return scolarite.UAIEtablissementorigine.toUpperCase();
-        }
-    }
-    return null;
-}
+
 
 function getFiliere(candidature) {
     if (candidature.Baccalaureat && candidature.Baccalaureat.SerieDiplomeCode) {
@@ -80,7 +72,7 @@ C.init = async function() {
                 }
             }
         } else {
-            let uai = getLatestUai(candidature);
+            let uai = Candidats.getLatestUai(candidature);
             if (uai && uai != null) {
                 if (!candidaturesParLycee[uai]) {
                     candidaturesParLycee[uai] = { total:0, generale:0, STI2D:0, autre:0 };

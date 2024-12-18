@@ -9,4 +9,14 @@ Candidats.getAll = function(){
     return data;
 }
 
+Candidats.getLatestUai = function(candidature) {
+    for (let i = 0; i < candidature.Scolarite.length; i++) {
+        let scolarite = candidature.Scolarite[i];
+        if (scolarite.UAIEtablissementorigine) {
+            return scolarite.UAIEtablissementorigine.toUpperCase();
+        }
+    }
+    return null;
+}
+
 export { Candidats };
