@@ -1,10 +1,13 @@
+// ./src/ui/map/index.js
+
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import { Coordonees } from "../../data/data-coordonees";
+import { Charts } from "../charts/index";
+import { Candidats } from "../../data/data-candidats.js";
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
-import * as echarts from 'echarts';
 
 
 
@@ -12,7 +15,7 @@ let Map = {};
 
 Map.map = null;
 Map.markers = null;
-Map._coordsData = null;
+Map._coordsData = Coordonees.getAll();
 Map._lycees = null;
 Map._candidaturesLycees = null;
 Map._candidaturesPostBac = null;
@@ -60,7 +63,7 @@ Map.onClusterClick = function(cluster) {
     let sommeCandidatures = { total: 0, generale: 0, STI2D: 0, autre: 0 };
     markers.forEach(marker => {
         if (marker.candidatures) {
-            let cdata = Map.filteredCandidatureData(marker.candidatures);
+            let cdata = Candidats.filteredCandidatureData(marker.candidatures, Map);
             sommeCandidatures.g = cdata.generale;
             sommeCandidatures.S = cdata.STI2D;
             sommeCandidatures.a = cdata.autre;
@@ -90,65 +93,6 @@ Map.onClusterClick = function(cluster) {
     .openOn(Map.map);
 };
 
-Map.loadCoordsData = async function() {
-    if (!Map._coordsData) {
-        Map._coordsData = await fetch("./src/data/json/coordonees.json").then(r=>r.json());
-    }
-    return Map._coordsData;
-};
-
-Map.getCoordFromPostalCode = async function(cp) {
-    let data = await Map.loadCoordsData();
-    for (let c of data) {
-        if (c.code_postal === cp) {
-            let parts = c._geopoint.split(",");
-            return {lat: parseFloat(parts[0]), lng: parseFloat(parts[1])};
-        }
-    }
-    return null;
-};
-
-Map.filteredCandidatureData = function(originalData) {
-    let result = {total:0, generale:0, STI2D:0, autre:0};
-    let isPostBac = originalData.isPostBac;
-
-    // Récupérer l'état des catégories filières
-    let filiereSelected = (Map._catFilters.generale || Map._catFilters.sti2d || Map._catFilters.autre);
-
-    if (isPostBac) {
-        if (Map._catFilters.postBac) {
-            if (filiereSelected) {
-                let g = Map._catFilters.generale ? originalData.generale : 0;
-                let s = Map._catFilters.sti2d ? originalData.STI2D : 0;
-                let a = Map._catFilters.autre ? originalData.autre : 0;
-                let tot = g+s+a;
-                result.total = tot;
-                result.generale = g;
-                result.STI2D = s;
-                result.autre = a;
-            } else {
-                let tot = originalData.postbacCount || originalData.total;
-                
-                result.total = tot;
-            }
-        } else {
-            result.total = 0;
-        }
-    } else {
-        let g = Map._catFilters.generale ? originalData.generale : 0;
-        let s = Map._catFilters.sti2d ? originalData.STI2D : 0;
-        let a = Map._catFilters.autre ? originalData.autre : 0;
-        let tot = g+s+a;
-        result.total = tot;
-        result.generale = g;
-        result.STI2D = s;
-        result.autre = a;
-    }
-
-    return result;
-};
-
-
 Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) {
     lycees.forEach(lycee => {
         let lat = parseFloat(lycee.latitude);
@@ -162,7 +106,7 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
             return;
         }
 
-        let cdata = Map.filteredCandidatureData(originalData);
+        let cdata = Candidats.filteredCandidatureData(originalData, Map);
 
         if (
             (cdata.total === 0 && !filtres.filtre0) ||
@@ -203,7 +147,6 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
             fillOpacity: 0.8
         });
 
-        // Stocker data filtrée + isPostBac
         cdata.isPostBac = false;
         circleMarker.candidatures = cdata;
         let sommePostBac = cdata.total - cdata.generale - cdata.STI2D - cdata.autre
@@ -229,7 +172,7 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
         originalData.isPostBac = true; // IT14
 
         let postalForMap = dept + "000";
-        let coords = await Map.getCoordFromPostalCode(postalForMap);
+        let coords = await Coordonees.getCoordFromPostalCode(postalForMap, Map._coordsData);
 
         // Si pas de coords, fallback sur Limoges par exemple
         if (!coords || isNaN(coords.lat) || isNaN(coords.lng)) {
@@ -242,7 +185,7 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
             continue;
         }
 
-        let cdata = Map.filteredCandidatureData(originalData);
+        let cdata = Candidats.filteredCandidatureData(originalData, Map);
 
         if (
             (cdata.total === 0 && !filtres.filtre0) ||
@@ -352,7 +295,7 @@ Map.updateMarqueurs = async function(lycees, candidatures, candidaturesPostBac) 
     await Map.ajouterMarqueursLycees(lycees, candidatures, { filtre0, filtre1_2, filtre3_5, filtre6 });
     await Map.ajouterMarqueursPostBac(candidaturesPostBac, { filtre0, filtre1_2, filtre3_5, filtre6 });
 
-    Map.updateChart(lycees, candidatures, candidaturesPostBac);
+    Charts.updateChart(lycees, candidatures, candidaturesPostBac, Map);
 };
 
 Map.ajouterEcouteursFiltres = async function(lycees, candidatures, candidaturesPostBac) {
@@ -369,7 +312,7 @@ Map.ajouterControleSeuil = function() {
     slider.addEventListener('input', (e) => {
         Map._threshold = parseInt(e.target.value);
         thresholdVal.textContent = Map._threshold;
-        Map.updateChart(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
+        Charts.updateChart(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac, Map);
     });
 };
 
@@ -383,7 +326,6 @@ Map.ajouterControleRayon = function() {
     });
 };
 
-// IT14: Ajouter écouteurs pour les catégories
 Map.ajouterControleCategories = function() {
     let cats = ['catPostBac', 'catGenerale', 'catSTI2D', 'catAutre'];
     cats.forEach(id => {
@@ -397,148 +339,6 @@ Map.ajouterControleCategories = function() {
     });
 };
 
-Map.updateChart = async function(lycees, candidaturesLycee, candidaturesPostBac) {
-    let coordsData = await Map.loadCoordsData();
-    let candidaturesParDept = {};
 
-    // Pour les lycées
-    for (let lycee of lycees) {
-        let uai = lycee.numero_uai.toUpperCase();
-        let originalData = candidaturesLycee[uai];
-        if (!originalData) continue;
-        originalData.isPostBac = false;
-
-        let lat = parseFloat(lycee.latitude);
-        let lng = parseFloat(lycee.longitude);
-        let dist = Coordonees.distanceVolDoiseau(Map._center.lat, Map._center.lng, lat, lng);
-        if (dist > Map._radius) continue;
-
-        let cdata = Map.filteredCandidatureData(originalData);
-        if (cdata.total > 0) {
-            let dept = lycee.code_departement.substring(0,2);
-            if (!candidaturesParDept[dept]) {
-                candidaturesParDept[dept] = {postbac:0, generale:0, sti2d:0, autre:0, total:0};
-            }
-            // cdata représente déjà postbac? Non cdata.isPostBac=false => pas de postbac
-            // Juste ajouter filières
-            candidaturesParDept[dept].generale += cdata.generale;
-            candidaturesParDept[dept].sti2d += cdata.STI2D;
-            candidaturesParDept[dept].autre += cdata.autre;
-            candidaturesParDept[dept].total += cdata.total;
-        }
-    }
-
-    // Post-bac
-    for (let dept in candidaturesPostBac) {
-        let originalData = candidaturesPostBac[dept];
-        originalData.isPostBac = true;
-        let postalForMap = dept + "000";
-        let coords = coordsData.find(c => c.code_postal === postalForMap);
-        if (!coords) continue;
-        let parts = coords._geopoint.split(",");
-        let lat = parseFloat(parts[0]);
-        let lng = parseFloat(parts[1]);
-
-        let dist = Coordonees.distanceVolDoiseau(Map._center.lat, Map._center.lng, lat, lng);
-        if (dist > Map._radius) continue;
-
-        let cdata = Map.filteredCandidatureData(originalData);
-        if (cdata.total > 0) {
-            if (!candidaturesParDept[dept]) {
-                candidaturesParDept[dept] = {postbac:0, generale:0, sti2d:0, autre:0, total:0};
-            }
-            candidaturesParDept[dept].postbac += cdata.total;
-            candidaturesParDept[dept].generale += cdata.generale;
-            candidaturesParDept[dept].sti2d += cdata.STI2D;
-            candidaturesParDept[dept].autre += cdata.autre;
-            candidaturesParDept[dept].total += cdata.total;
-        }
-    }
-
-    let deptArray = Object.keys(candidaturesParDept).map(d => {
-        let dd = candidaturesParDept[d];
-        return {dept:d, ...dd};
-    });
-
-    deptArray.sort((a,b) => b.total - a.total);
-
-    if (Map._threshold > 0) {
-        let regroupes = {dept:"Autres", postbac:0, generale:0, sti2d:0, autre:0, total:0};
-        let filteredArray = [];
-        deptArray.forEach(item => {
-            if (item.total <= Map._threshold) {
-                regroupes.postbac += item.postbac;
-                regroupes.generale += item.generale;
-                regroupes.sti2d += item.sti2d;
-                regroupes.autre += item.autre;
-                regroupes.total += item.total;
-            } else {
-                filteredArray.push(item);
-            }
-        });
-        if (regroupes.total > 0) {
-            filteredArray.push(regroupes);
-        }
-        deptArray = filteredArray;
-    }
-
-    let depts = deptArray.map(d => d.dept);
-    let series = [];
-    let legend = [];
-
-    function addSeriesIfChecked(name, field) {
-        let selected = false;
-        if (name === 'Post-bac') selected = Map._catFilters.postBac;
-        else if (name === 'Générale') selected = Map._catFilters.generale;
-        else if (name === 'STI2D') selected = Map._catFilters.sti2d;
-        else if (name === 'Autre') selected = Map._catFilters.autre;
-        if (selected) {
-            series.push({
-                name: name,
-                type: 'bar',
-                stack: 'total',
-                data: deptArray.map(d => d[field])
-            });
-            legend.push(name);
-        }
-    }
-
-    addSeriesIfChecked('Post-bac', 'postbac');
-    addSeriesIfChecked('Générale', 'generale');
-    addSeriesIfChecked('STI2D', 'sti2d');
-    addSeriesIfChecked('Autre', 'autre');
-
-    let chartDom = document.getElementById('chartContainer');
-    let myChart = echarts.init(chartDom);
-
-    let option = {
-        title: {
-            text: 'Candidatures par Département',
-            left: 'center'
-        },
-        tooltip: {
-            trigger: 'axis',
-            axisPointer: {type: 'shadow'}
-        },
-        legend: {
-            bottom: '0',
-            data: legend
-        },
-        grid: {
-            left: '3%', right: '4%', bottom: '10%', containLabel: true
-        },
-        xAxis: {
-            type: 'value',
-            boundaryGap: [0, 0.01]
-        },
-        yAxis: {
-            type: 'category',
-            data: depts
-        },
-        series: series
-    };
-
-    myChart.setOption(option);
-};
 
 export { Map };

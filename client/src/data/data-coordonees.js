@@ -1,3 +1,5 @@
+// ./src/data/data-candidats.js
+
 let data = await fetch("./src/data/json/coordonees.json");
 data = await data.json();
 
@@ -23,5 +25,22 @@ Coordonees.distanceVolDoiseau = function(lat_a, lon_a, lat_b, lon_b) {
 
     return (rad_dist * 3437.74677 * 1.1508) * 1.6093470878864446;
 }
+
+
+Coordonees.getCoordFromPostalCode = async function(cp, data) {
+    for (let c of data) {
+        if (c.code_postal === cp) {
+            let parts = c._geopoint.split(",");
+            return {lat: parseFloat(parts[0]), lng: parseFloat(parts[1])};
+        }
+    }
+    return null;
+};
+
+Coordonees.getDepartementFromCodePostal = function(cp) {
+    let dept = cp.substring(0, 2);
+    return dept;
+}
+
 
 export { Coordonees };
