@@ -1,7 +1,5 @@
 // ./src/ui/charts/index.js
 
-import { Coordonees } from "../../data/data-coordonees";
-import { Candidats } from "../../data/data-candidats.js";
 import * as echarts from 'echarts';
 import { Lycees } from "../../data/data-lycees.js";
 
