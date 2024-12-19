@@ -22,32 +22,29 @@ Candidats.getLatestUai = function(candidature) {
 }
 
 Candidats.filteredCandidatureData = function(originalData, Map) {
-    let result = {total:0, generale:0, STI2D:0, autre:0};
+    let result = {total:0, generale:0, STI2D:0, autre:0, postbacCount:0};
     let isPostBac = originalData.isPostBac;
 
     // Récupérer l'état des catégories filières
     let filiereSelected = (Map._catFilters.generale || Map._catFilters.sti2d || Map._catFilters.autre);
 
     if (isPostBac) {
+        // Marker post-bac
         if (Map._catFilters.postBac) {
-            if (filiereSelected) {
-                let g = Map._catFilters.generale ? originalData.generale : 0;
-                let s = Map._catFilters.sti2d ? originalData.STI2D : 0;
-                let a = Map._catFilters.autre ? originalData.autre : 0;
-                let tot = g+s+a;
-                result.total = tot;
-                result.generale = g;
-                result.STI2D = s;
-                result.autre = a;
-            } else {
+                // Post-bac coché
                 let tot = originalData.postbacCount || originalData.total;
-                
                 result.total = tot;
-            }
+                result.generale = 0;
+                result.STI2D = 0;
+                result.autre = 0;
+                result.postbacCount = tot;
         } else {
+            // Post-bac non coché => rien
             result.total = 0;
+            result.postbacCount = 0;
         }
     } else {
+        // Lycée marker
         let g = Map._catFilters.generale ? originalData.generale : 0;
         let s = Map._catFilters.sti2d ? originalData.STI2D : 0;
         let a = Map._catFilters.autre ? originalData.autre : 0;
@@ -56,10 +53,12 @@ Candidats.filteredCandidatureData = function(originalData, Map) {
         result.generale = g;
         result.STI2D = s;
         result.autre = a;
+        result.postbacCount = 0;
     }
 
     return result;
 };
+
 
 
 

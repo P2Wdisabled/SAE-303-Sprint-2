@@ -14,7 +14,6 @@ C.init = async function() {
     let lyceesData = await Lycees.getAll();
     let candidaturesData = await Candidats.getAll();
 
-    // Utiliser la nouvelle fonction d'agrégation des données
     const { candidaturesParLycee, candidaturesPostBacParDept } = Candidats.aggregateCandidatures(candidaturesData);
 
     Map.init('map', lyceesData, candidaturesParLycee, candidaturesPostBacParDept);

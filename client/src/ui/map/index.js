@@ -60,7 +60,7 @@ Map.init = async function(containerId, lycees, candidaturesParLycee, candidature
 
 Map.onClusterClick = function(cluster) {
     let markers = cluster.layer.getAllChildMarkers();
-    let sommeCandidatures = { total: 0, generale: 0, STI2D: 0, autre: 0 };
+    let sommeCandidatures = { total: 0, generale: 0, STI2D: 0, autre: 0, postbacCount: 0};
     markers.forEach(marker => {
         if (marker.candidatures) {
             let cdata = Candidats.filteredCandidatureData(marker.candidatures, Map);
@@ -71,9 +71,9 @@ Map.onClusterClick = function(cluster) {
             sommeCandidatures.generale += cdata.generale;
             sommeCandidatures.STI2D += cdata.STI2D;
             sommeCandidatures.autre += cdata.autre;
+            sommeCandidatures.postbacCount += cdata.postbacCount;
         }
     });
-    let sommePostBac = sommeCandidatures.total - sommeCandidatures.generale - sommeCandidatures.STI2D - sommeCandidatures.autre
     let popupContent = `
         <b>Cluster</b><br>
         <strong>Total des candidatures:</strong> ${sommeCandidatures.total}<br>
@@ -81,7 +81,7 @@ Map.onClusterClick = function(cluster) {
         &nbsp;&nbsp;Générale: ${sommeCandidatures.generale}<br>
         &nbsp;&nbsp;STI2D: ${sommeCandidatures.STI2D}<br>
         &nbsp;&nbsp;Autre: ${sommeCandidatures.autre}<br>
-        &nbsp;&nbsp;Post-Bac: ${sommePostBac} (définir marker postbac)
+        &nbsp;&nbsp;Post-Bac: ${sommeCandidatures.postbacCount}
     `;
 
     let popup = L.popup({
@@ -109,7 +109,6 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
         let cdata = Candidats.filteredCandidatureData(originalData, Map);
 
         if (
-            (cdata.total === 0 && !filtres.filtre0) ||
             (cdata.total >= 1 && cdata.total <= 2 && !filtres.filtre1_2) ||
             (cdata.total >= 3 && cdata.total <= 5 && !filtres.filtre3_5) ||
             (cdata.total >= 6 && !filtres.filtre6)
@@ -135,8 +134,7 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
         
         // Vérifier que lat et lng sont valides
         if (isNaN(lat) || isNaN(lng)) {
-            console.warn(`Coordonnées invalides pour le lycée : ${lycee.appellation_officielle}`, lycee);
-            return; // Ne pas créer de marqueur
+            return;
         }
         let circleMarker = L.circleMarker([lat, lng], {
             radius: 6 + cdata.total,
@@ -149,7 +147,6 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
 
         cdata.isPostBac = false;
         circleMarker.candidatures = cdata;
-        let sommePostBac = cdata.total - cdata.generale - cdata.STI2D - cdata.autre
     
         circleMarker.bindPopup(`
             <b>${lycee.appellation_officielle}</b><br>
@@ -158,8 +155,8 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
             <strong>Détails par Filière:</strong><br>
             &nbsp;&nbsp;Générale: ${cdata.generale}<br>
             &nbsp;&nbsp;STI2D: ${cdata.STI2D}<br>
-            &nbsp;&nbsp;Autre: ${cdata.autre}
-            &nbsp;&nbsp;Post-Bac: ${sommePostBac} (définir marker postbac)
+            &nbsp;&nbsp;Autre: ${cdata.autre}<br>
+            &nbsp;&nbsp;Post-Bac: ${cdata.postbacCount}
         `);
 
         Map.markers.addLayer(circleMarker);
@@ -174,10 +171,9 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
         let postalForMap = dept + "000";
         let coords = await Coordonees.getCoordFromPostalCode(postalForMap, Map._coordsData);
 
-        // Si pas de coords, fallback sur Limoges par exemple
+        // Si pas de coords, ne pas afficher
         if (!coords || isNaN(coords.lat) || isNaN(coords.lng)) {
-            console.warn(`Aucune coordonnée valide pour ${postalForMap}. Utilisation du fallback centre.`);
-            coords = {lat: Map._center.lat, lng: Map._center.lng};
+            continue;
         }
 
         let dist = Coordonees.distanceVolDoiseau(Map._center.lat, Map._center.lng, coords.lat, coords.lng);
@@ -222,7 +218,6 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
 
         cdata.isPostBac = true;
         circleMarker.candidatures = cdata;
-        let sommePostBac = cdata.total - cdata.generale - cdata.STI2D - cdata.autre
 
         circleMarker.bindPopup(`
             <b>Post-Bac - Département ${dept}</b><br>
@@ -231,7 +226,7 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
             &nbsp;&nbsp;Générale: ${cdata.generale}<br>
             &nbsp;&nbsp;STI2D: ${cdata.STI2D}<br>
             &nbsp;&nbsp;Autre: ${cdata.autre}<br>
-            &nbsp;&nbsp;Post-Bac: ${sommePostBac} (définir marker postbac)
+            &nbsp;&nbsp;Post-Bac: ${cdata.postbacCount}
         `);
 
         Map.markers.addLayer(circleMarker);
@@ -271,7 +266,6 @@ Map.ajouterControleFiltrage = async function() {
         let div = L.DomUtil.create('div', 'info filter');
         div.innerHTML = `
             <h4>Filtrer les candidatures</h4>
-            <label><input type="checkbox" id="candidatures0"> 0</label><br>
             <label><input type="checkbox" id="candidatures1-2" checked> 1-2</label><br>
             <label><input type="checkbox" id="candidatures3-5" checked> 3-5</label><br>
             <label><input type="checkbox" id="candidatures6+" checked> 6+</label><br>
@@ -283,7 +277,6 @@ Map.ajouterControleFiltrage = async function() {
 };
 
 Map.updateMarqueurs = async function(lycees, candidatures, candidaturesPostBac) {
-    let filtre0 = document.getElementById('candidatures0').checked;
     let filtre1_2 = document.getElementById('candidatures1-2').checked;
     let filtre3_5 = document.getElementById('candidatures3-5').checked;
     let filtre6 = document.getElementById('candidatures6+').checked;
@@ -292,8 +285,8 @@ Map.updateMarqueurs = async function(lycees, candidatures, candidaturesPostBac) 
         Map.markers.clearLayers();
     }
 
-    await Map.ajouterMarqueursLycees(lycees, candidatures, { filtre0, filtre1_2, filtre3_5, filtre6 });
-    await Map.ajouterMarqueursPostBac(candidaturesPostBac, { filtre0, filtre1_2, filtre3_5, filtre6 });
+    await Map.ajouterMarqueursLycees(lycees, candidatures, { filtre1_2, filtre3_5, filtre6 });
+    await Map.ajouterMarqueursPostBac(candidaturesPostBac, { filtre1_2, filtre3_5, filtre6 });
 
     Charts.updateChart(lycees, candidatures, candidaturesPostBac, Map);
 };
