@@ -3,24 +3,23 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { Coordonees } from "../../data/data-coordonees";
 import { Charts } from "../charts/index";
 import { Candidats } from "../../data/data-candidats.js";
-import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
-
-
 
 let Map = {};
 
 Map.map = null;
 Map.markers = null;
+Map.circle = null; // Propriété pour le cercle
 Map._coordsData = Coordonees.getAll();
 Map._lycees = null;
 Map._candidaturesLycees = null;
 Map._candidaturesPostBac = null;
 Map._threshold = 3; 
-Map._radius = 650; 
+Map._radius = 650; // Rayon en kilomètres
 Map._center = {lat:45.8336, lng:1.2611};
 
 Map._catFilters = {
@@ -39,6 +38,15 @@ Map.init = async function(containerId, lycees, candidaturesParLycee, candidature
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(Map.map);
+
+    // Ajout du cercle représentant le rayon (converti en mètres)
+    Map.circle = L.circle(Map._center, {
+        radius: Map._radius * 1000, // Conversion de kilomètres en mètres
+        color: 'blue',               // Couleur du contour du cercle
+        fill: false,                 // Pas de remplissage
+        dashArray: '4',              // Style des tirets du contour
+        weight: 2                    // Épaisseur du contour
     }).addTo(Map.map);
 
     Map.markers = L.markerClusterGroup({
@@ -64,9 +72,6 @@ Map.onClusterClick = function(cluster) {
     markers.forEach(marker => {
         if (marker.candidatures) {
             let cdata = Candidats.filteredCandidatureData(marker.candidatures, Map);
-            sommeCandidatures.g = cdata.generale;
-            sommeCandidatures.S = cdata.STI2D;
-            sommeCandidatures.a = cdata.autre;
             sommeCandidatures.total += cdata.total;
             sommeCandidatures.generale += cdata.generale;
             sommeCandidatures.STI2D += cdata.STI2D;
@@ -101,7 +106,7 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
         let originalData = candidatures[uai] || { total: 0, generale: 0, STI2D: 0, autre: 0 };
         originalData.isPostBac = false; 
 
-        let dist = Coordonees.distanceVolDoiseau(Map._center.lat, Map._center.lng, lat, lng);
+        let dist = Coordonees.distanceVolDoiseau(Map._center.lat, Map._center.lng, lat, lng); // Distance en kilomètres
         if (dist > Map._radius) {
             return;
         }
@@ -120,7 +125,15 @@ Map.ajouterMarqueursLycees = async function(lycees, candidatures, filtres = {}) 
             return; 
         }
 
-        
+        // Appliquer les filtres de catégorie
+        if (
+            (cdata.generale > 0 && !Map._catFilters.generale) ||
+            (cdata.STI2D > 0 && !Map._catFilters.sti2d) ||
+            (cdata.autre > 0 && !Map._catFilters.autre)
+        ) {
+            return;
+        }
+
         let couleur;
         if (cdata.total === 0) {
             couleur = 'gray';
@@ -176,7 +189,7 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
             continue;
         }
 
-        let dist = Coordonees.distanceVolDoiseau(Map._center.lat, Map._center.lng, coords.lat, coords.lng);
+        let dist = Coordonees.distanceVolDoiseau(Map._center.lat, Map._center.lng, coords.lat, coords.lng); // Distance en kilomètres
         if (dist > Map._radius) {
             continue;
         }
@@ -193,6 +206,13 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
         }
 
         if (cdata.total === 0) {
+            continue;
+        }
+
+        // Appliquer les filtres de catégorie
+        if (
+            (cdata.postbacCount > 0 && !Map._catFilters.postBac)
+        ) {
             continue;
         }
 
@@ -232,7 +252,6 @@ Map.ajouterMarqueursPostBac = async function(candidaturesPostBac, filtres = {}) 
         Map.markers.addLayer(circleMarker);
     }
 };
-
 
 Map.ajouterLegende = async function() {
     let legend = L.control({ position: 'bottomright' });
@@ -313,8 +332,15 @@ Map.ajouterControleRayon = function() {
     let slider = document.getElementById('radiusSlider');
     let radiusVal = document.getElementById('radiusValue');
     slider.addEventListener('input', (e) => {
-        Map._radius = parseInt(e.target.value);
+        Map._radius = parseInt(e.target.value); // Rayon en kilomètres
         radiusVal.textContent = Map._radius;
+
+        // Mettre à jour le rayon du cercle sur la carte (conversion en mètres)
+        if (Map.circle) {
+            Map.circle.setRadius(Map._radius * 1000); // Conversion en mètres
+        }
+
+        // Mettre à jour les marqueurs en fonction du nouveau rayon
         Map.updateMarqueurs(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
     });
 };
@@ -322,16 +348,17 @@ Map.ajouterControleRayon = function() {
 Map.ajouterControleCategories = function() {
     let cats = ['catPostBac', 'catGenerale', 'catSTI2D', 'catAutre'];
     cats.forEach(id => {
-        document.getElementById(id).addEventListener('change', (e) => {
-            Map._catFilters.postBac = document.getElementById('catPostBac').checked;
-            Map._catFilters.generale = document.getElementById('catGenerale').checked;
-            Map._catFilters.sti2d = document.getElementById('catSTI2D').checked;
-            Map._catFilters.autre = document.getElementById('catAutre').checked;
-            Map.updateMarqueurs(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
-        });
+        let element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('change', (e) => {
+                Map._catFilters.postBac = document.getElementById('catPostBac').checked;
+                Map._catFilters.generale = document.getElementById('catGenerale').checked;
+                Map._catFilters.sti2d = document.getElementById('catSTI2D').checked;
+                Map._catFilters.autre = document.getElementById('catAutre').checked;
+                Map.updateMarqueurs(Map._lycees, Map._candidaturesLycees, Map._candidaturesPostBac);
+            });
+        }
     });
 };
-
-
 
 export { Map };
