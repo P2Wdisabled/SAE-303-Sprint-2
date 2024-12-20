@@ -1,12 +1,77 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
+    <title>Carte et Graphique</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SAE3.DWeb-DI.03 base code</title>
+    <script type="module" src="./src/main.js" defer></script>
+    <style>
+        body, html {
+            margin:0; padding:0;
+            width:100%; height:100%;
+            font-family: sans-serif;
+        }
+        #header {
+            width:100%;
+            height:50px;
+            background:#ccc;
+            line-height:50px;
+            padding-left:10px;
+        }
+        .container {
+            display:flex;
+            flex-direction:row;
+            width:100%; height:calc(100% - 50px);
+        }
+        #map {
+            flex:3; 
+            position:relative;
+        }
+        #chart {
+            flex:1; 
+            height:100%;
+            display:flex;
+            flex-direction:column;
+        }
+        #chartContainer {
+            flex:1;
+            position:relative;
+        }
+        #chartControls {
+            background:#eee;
+            padding:10px;
+        }
+        .control-section {
+            margin-bottom:10px;
+        }
+        #thresholdValue, #radiusValue {
+            font-weight:bold;
+        }
+    </style>
 </head>
-<body class="bg-gray-100">
-    <section id="header"></section>
-    <script type="module" src="src/main.js"></script>
+<body>
+    <div class="container">
+        <div id="map"></div>
+        <div id="chart">
+            <div id="chartContainer"></div>
+            <div id="chartControls">
+                <div class="control-section">
+                    <label>Seuil de regroupement : <span id="thresholdValue">3</span></label><br>
+                    <input type="range" id="thresholdSlider" min="0" max="20" step="1" value="3">
+                </div>
+                <div class="control-section">
+                    <label>Rayon (km) autour de Limoges : <span id="radiusValue">650</span></label><br>
+                    <input type="range" id="radiusSlider" min="1" max="9000" step="1" value="650">
+                </div>
+                <div class="control-section">
+                    <h4>Catégories</h4>
+                    <label><input type="checkbox" id="catPostBac" checked> Post-bac</label><br>
+                    <label><input type="checkbox" id="catGenerale" checked> Générale</label><br>
+                    <label><input type="checkbox" id="catSTI2D" checked> STI2D</label><br>
+                    <label><input type="checkbox" id="catAutre" checked> Autres</label><br>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
